@@ -40,7 +40,7 @@ Researchers gave me a questionnaire result in Excel file with problems in their 
 
 ### Fisrt problem and solution in SAS:
 
-<img src="file:///C:/Users/abdul/AppData/Roaming/marktext/images/2024-07-31-11-06-57-image.png" title="" alt="" width="310"> <img title="" src="file:///C:/Users/abdul/AppData/Roaming/marktext/images/2024-07-31-11-08-16-image.png" alt="" width="325"> <img src="file:///C:/Users/abdul/AppData/Roaming/marktext/images/2024-07-31-11-11-20-image.png" title="" alt="" width="207">
+<img src="Images/2024-07-31-11-06-57-image.png" title="" alt="" width="310"> <img title="" src="Images/2024-07-31-11-08-16-image.png" alt="" width="325"> <img src="Images/2024-07-31-11-11-20-image.png" title="" alt="" width="207">
 
 The first problem is in the excel cells types for multiple-selection answers. Giving this Q13 column as an example. If 2-slected answers the excel recognize it as Customed Date-Type (or might be the researcher did it) (*screenshot 1*) but if more than 2 selection or less it keeps them as Texts or numeric (*screenshot 2*). When I import the file in SAS it reads only the multi-selected answers cells as 5 digits number and keeps the other (*screenshot 3*).
 
@@ -142,7 +142,7 @@ I did this function on 3 variables as shown (*screenshot 4*).
 
 Note: Q13 in the excel (*screenshots 1-3 example*) = var15_.
 
-<img src="file:///C:/Users/abdul/AppData/Roaming/marktext/images/2024-07-31-14-06-02-image.png" title="" alt="" width="215">
+<img src="Images/2024-07-31-14-06-02-image.png" title="" alt="" width="215">
 
 ### Second problem and solution in SAS:
 
@@ -193,7 +193,7 @@ This is how:
 
 function result (*screenshot 5*):
 
-![](C:\Users\abdul\AppData\Roaming\marktext\images\2024-07-31-14-52-59-image.png)
+![](Images\2024-07-31-14-52-59-image.png)
 
 ## 
 
