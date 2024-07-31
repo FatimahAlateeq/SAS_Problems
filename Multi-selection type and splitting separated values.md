@@ -191,13 +191,13 @@ This is how:
 %multi_select(&multi, &id, DATA_ORIGINAL); /* call the function */
 ```
 
-function result (*screenshot 5*):
+Function result (*screenshot 5*):
 
-![](Images\2024-07-31-14-52-59-image.png)
+<img src="Images\2024-07-31-14-52-59-image.png" title="" alt="" width="">
 
-## 
 
-## Done
+
+### Done
 
 Bye
 
