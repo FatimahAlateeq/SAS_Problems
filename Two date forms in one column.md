@@ -2,13 +2,13 @@
 
 The variable "Q2" is `character` type, and have 2 different forms of dates: 
 
-![](C:\Users\abdul\Pictures\Screenshots\Screenshot%202024-05-29%20105947.png) (screenshot SAS problem) 
+![screenshot SAS problem](Images/Screenshot%202024-05-29%20105947.png) (screenshot SAS problem) 
 
 When i try to convert it in **SAS** to type `date` it calculates number `44413` as `06AUG2081`. 
 
 But **Excel** calculate it as `05AUG2021`. 
 
-![](C:\Users\abdul\Pictures\Screenshots\Screenshot%202024-05-29%20112144.png)(screenshot Excel) 
+![screenshot Excel](Images/Screenshot%202024-05-29%20112144.png)(screenshot Excel) 
 
 They became different dates. 
 
@@ -33,17 +33,19 @@ run;
 
  
 
-![](C:\Users\abdul\Pictures\Screenshots\Screenshot%202024-05-30%20113514.png)(screenshot SAS code) 
+![screenshot SAS code](Images/Screenshot%202024-05-30%20113514.png)(screenshot SAS code) 
 
 Result: 
 
-![](C:\Users\abdul\Pictures\Screenshots\Screenshot%202024-05-30%20112947.png) (screanshot SAS result)
+![screanshot SAS result](Images/Screenshot%202024-05-30%20112947.png) (screanshot SAS result)
+
+
 
 ### Reference:
 
 Back to this post for explanation:  [Re: Importing a date - SAS Support Communities](https://communities.sas.com/t5/SAS-Programming/Importing-a-date/m-p/161112#M31336) 
 
-![](C:\Users\abdul\Pictures\Screenshots\Screenshot%202024-05-30%20113225.png)
+![screenshot reference](Images/Screenshot%202024-05-30%20113225.png)
 
 ### Done
 
