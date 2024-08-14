@@ -4,11 +4,11 @@ I have 4 numeric columns i want to apply the ANOVA test on them, but i want the 
 
 Before transforming:
 
-![](C:\Users\abdul\AppData\Roaming\marktext\images\2024-08-14-12-54-26-image.png) (screenshot 1)
+![](Images/2024-08-14-12-54-26-image.png) (screenshot 1)
 
 After transforming:
 
-![](C:\Users\abdul\AppData\Roaming\marktext\images\2024-08-14-12-55-42-image.png) (screenshot 1)
+![](Images/2024-08-14-12-55-42-image.png) (screenshot 2)
 
 Here are the names of variables changed to be coded as numbers (for example: 30_deg=1, 60_deg=2,....).
 
