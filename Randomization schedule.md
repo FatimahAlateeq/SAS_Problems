@@ -1,6 +1,6 @@
 **This is a'How to...', not a programming problem.**
 
-### Randomization schedule using SAS Proc Plan for CASE STUDY: A TWO-TREATMENT, TWOPERIOD, TWO-SEQUENCE CROSS-OVER DESIGN
+### Randomization schedule using SAS Proc Plan for CASE STUDY: A TWO-TREATMENT, TWO-PERIOD, TWO-SEQUENCE CROSS-OVER DESIGN
 
 **Why blocks?** Block randomization helps to increase the comparability of the treatment groups, particularly when patient characteristics may change over time, as a result, for example, of changes in recruitment policy. It also provides a better guarantee that the treatment groups will be of nearly equal size. In crossover trials it provides the means of obtaining balanced designs with their greater efficiency and easier interpretation. Care should be taken to choose block lengths that are sufficiently short to limit possible imbalance, but that are long enough to avoid predictability towards the end of the sequence in a block.
 
@@ -17,7 +17,7 @@
 ```sas
 /* n=24, i choose block length=6, so number of blocks=24/6=4 */
 title1 "RANDOMIZATION SCHEDULE";
-title2 "A Single-Dose, Randomized, Twoperiod Crossover Study";
+title2 "A Single-Dose, Randomized, Two-period Crossover Study";
 
 proc plan seed=122700;
 	factors block=4 random sequence=6 random/noprint;
