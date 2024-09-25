@@ -43,7 +43,7 @@ i may add more tests for *non-normal distribution* later. or may not.
 
 it is not clear for me which test to trust yet, that because the diversity of results, and the diversity shape of data sets.
 
-##### My Data
+#### My Data
 
 i use this fake data set:
 
@@ -72,31 +72,31 @@ i use this fake data set:
 
 ### Diagnose each variable
 
-##### test_drug:
+#### test_drug:
 
 Normality test:
 
-![tablenormaltestdrug.png](C:\Users\abdul\Desktop\Fatimah%20s%20desktop_version_3\alarfaj_medical\SAS%20Learn\Images\tablenormaltestdrug.png)
+![tablenormaltestdrug.png](Images/tablenormaltestdrug.png)
 
-![histonormaltestdrug.png](C:\Users\abdul\Desktop\Fatimah%20s%20desktop_version_3\alarfaj_medical\SAS%20Learn\Images\histonormaltestdrug.png)
+![histonormaltestdrug.png](Images/histonormaltestdrug.png)
 
-![qqnormaltestdrug.png](C:\Users\abdul\Desktop\Fatimah%20s%20desktop_version_3\alarfaj_medical\SAS%20Learn\Images\qqnormaltestdrug.png)
+![qqnormaltestdrug.png](Images/qqnormaltestdrug.png)
 
 This variable looks normally distributed.
 
 Outliers detection tests:
 
-![cooksdtestdrug.png](C:\Users\abdul\Desktop\Fatimah%20s%20desktop_version_3\alarfaj_medical\SAS%20Learn\Images\cooksdtestdrug.png)
+![cooksdtestdrug.png](Images/cooksdtestdrug.png)
 
-![rstudenttestdrug.png](C:\Users\abdul\Desktop\Fatimah%20s%20desktop_version_3\alarfaj_medical\SAS%20Learn\Images\rstudenttestdrug.png)
+![rstudenttestdrug.png](Images/rstudenttestdrug.png)
 
-![boxplottest.png](C:\Users\abdul\Desktop\Fatimah%20s%20desktop_version_3\alarfaj_medical\SAS%20Learn\Images\boxplottest.png)
+![boxplottest.png](Images/boxplottest.png)
 
-![zscoretestdrug.png](C:\Users\abdul\Desktop\Fatimah%20s%20desktop_version_3\alarfaj_medical\SAS%20Learn\Images\zscoretestdrug.png)
+![zscoretestdrug.png](Images/zscoretestdrug.png)
 
 only 2 of 4 tests showed 1 different outliers for each. also, these outliers look very close to the cutoffs (i mentioned the cutoff values in the SAS code below).
 
-##### ref_drug:
+#### ref_drug:
 
 Normality test: passed with p-value 0.6788: This variable looks normally distributed.
 
@@ -112,7 +112,7 @@ Outliers detection tests: i will make it short in this table:
 
 `subject id 2` diagnosed by 3 of 4 tests. also, `subject id 13` was very colse to the cutoff value.
 
-##### test_ref_ratio:
+#### test_ref_ratio:
 
 Normality test: passed with p-value 0.3055: This variable looks normally distributed.
 
