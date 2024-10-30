@@ -8,13 +8,13 @@ ____
 
 **Project:** Bioequivalence. 
 
-**Last Update:** 23/Oct/2024
+**Last Update:** 30/Oct/2024
 
-**Version:** 1.0
+**Version:** 2.0
 
 **Is it an official copy?** No, This is a <u>draft copy</u>.
 
-**Edited by:** Fatimah in 23/Oct/2024.
+**Edited by:** Fatimah in 30/Oct/2024.
 
 ___
 
@@ -55,7 +55,9 @@ ___
 
 9. I am not sure about my calculations (I did not validate them yet).
 
-##### Definition:
+____
+
+##### Definitions:
 
 **PI**: Principal Investigator.
 
@@ -71,11 +73,15 @@ ___
 
 **0.3** Write <u>.txt</u> file that describe the folder contents and ideas and any important info in detail. (example folder name: /raw files of Panadol-Paracetamol BioEq Study/info.txt).
 
+____
+
 #### 1. Have SAS Software and .xlsx manager software
 
 **1.1** Get your own work <u>username</u> and <u>password</u> from licensed account of SAS software by your company.
 
 **1.2** Prepare a tool to manage <u>.xlsx</u> files (examples: *Microsoft Excel*, *Google Sheets*. **DO NOT** use personal accounts! only your work licenced accounts).
+
+____
 
 #### 2. Data pre-processing (preparing data using Excel)
 
@@ -94,6 +100,8 @@ ___
 ![figure: clean data](Images/2024-10-21-12-04-44-image.png)
 
 **2.6** Generate new column named `period` from `sequence` and `treatment` using a correct formula. (example: ![](Images/2024-10-21-12-13-35-image.png)). This column describes the period of the drug have been taken in.
+
+____
 
 #### 3. Importing cleaned data to SAS and environment preparing
 
@@ -127,6 +135,10 @@ ___
 
 6. **What if you faced Errors?** read them and figure out your mistakes or copy the error and paste it in browser search and find the solution (use your debugging skills).
 
+7. **If a `subject` is missing in any period**, **Do Not** include hem in the analysis, and inform the PI about that and note it in your report.
+
+____
+
 #### 4. Prepare variables
 
 **4.1** Do macros to make it easy when you call variables in the SAS-Procedures(proc).
@@ -140,11 +152,11 @@ ___
 %let sequ=sequence;
 %let trt=treatment;
 %let prd=period;
-%let parameters=0 0.08 0.25 0.5 0.75 1 1.33 1.67 2 2.33 2.67 3 3.33 3.67 4 4.5 5 6 8 10 12 16 24 36 48;
+%let parameters='0'n '0.08'n '0.25'n '0.5'n '0.75'n '1'n '1.33'n '1.67'n '2'n '2.33'n '2.67'n '3'n '3.33'n '3.67'n '4'n '4.5'n '5'n '6'n '8'n '10'n '12'n '16'n '24'n '36'n '48'n;
 * these are the time points from the data;
 
 /* transform time-points */
-%let length_parameters=%sysfunc(countw(&parameters, %str(' '))); * '%sysfunc(countw()' conceders the '.' as separator so I add '%str(' ')' argument. this macro is to get count of the parameters;
+%let length_parameters=%sysfunc(countw(&parameters, %str('n '))); * '%sysfunc(countw()' conceders the '.' as separator so I add '%str('n ')' argument. this macro is to get count of the parameters;
 
 data transformed;
     set &my_data;
@@ -163,9 +175,11 @@ proc sort data=transformed; * sort the data, it is needed for next steps;
 run; 
 ```
 
+____
+
 #### 5. Calculations
 
-**5.1** You need some calculations like C_max, AUC, T_max,...etc.
+**5.1** You need some calculations like C_max, AUC, T_max, and log...etc.
 
 ```sas
 /* calculations */
@@ -215,7 +229,7 @@ proc sql;
 quit;
 
 proc sql;
-    create table cmax_auc as select cmax_auc_temp.*, transformed.time_point as 
+    create table calcs_summary_1 as select cmax_auc_temp.*, transformed.time_point as 
         t_max, geo_temp.geomean, geo_temp.gmstderr, geo_temp.cv, 
         geo_temp.lower_gmc_lm_90, geo_temp.upper_gmc_lm_90 from cmax_auc_temp left 
         join transformed on cmax_auc_temp.cmax=transformed.concentration_value left 
@@ -227,11 +241,13 @@ quit;
 
 title color=red "Calculations Table summary";
 
-proc print data=cmax_auc;
+proc print data=calcs_summary_1;
 run;
 
 title;
 ```
+
+____
 
 #### 6. Outliers detection
 
@@ -243,7 +259,7 @@ title;
 
 ```sas
 *** make macros ***;
-%let data_set=calcs_summary;
+%let data_set=calcs_summary_1;
 %let id=&subj;
 %let categorical_variables=&sequ &trt; * select catigorical variables to encode them next step;
 %let independent_variables=e_&sequ e_&trt &prd; * 'e_' means encoded;
@@ -320,7 +336,7 @@ title;
 *** transform data to make IQR and z-score tests***;
 %let parameters= &dependent_variables;
 %let length_parameters=%sysfunc(countw(&parameters));
-data transformed;
+data transformed_1;
     set &data_set;
     array parameters &parameters; * Create an array for the parameters;
     array parameters_names{&length_parameters} $ &parameters; * Corresponding names for the array;
@@ -331,14 +347,14 @@ data transformed;
     end;
     drop i &dependent_variables; * Drop the loop variable 'i' and transformed columns of parameters;
 run;
-proc sort data=transformed; by parameter_name &independent_variables; run; * needed step to avoid error in following steps;
+proc sort data=transformed_1; by parameter_name &independent_variables; run; * needed step to avoid error in following steps;
 ```
 
 **6.5.2** Here is the IQR test, This test is suitable for normal-distributed and skewed data too.
 
 ```sas
 title color=bip "Outliers detection using (iqr)";
-proc univariate data=transformed noprint;
+proc univariate data=transformed_1 noprint;
     by parameter_name &independent_variables;
     var parameter_value;
     output out=quartiles pctlpre=Q pctlpts=25, 75;
@@ -350,7 +366,7 @@ data bounds_temp;
     Upper_Bound_iqr = Q75 + 1.5 * IQR; /* Upper bound */
 run;
 data iqr_results; * a merge step, here is the ooutliers detection;
-    merge bounds_temp transformed; /* Get bounds */
+    merge bounds_temp transformed_1; /* Get bounds */
     by parameter_name &independent_variables;
     if parameter_value < Lower_Bound_iqr or parameter_value > Upper_Bound_iqr then outlier = 'outlier';
     else outlier = '';
@@ -366,8 +382,8 @@ title color=bibg "Outliers detection using (z-score)";
 *** z-score cutoff=+-3;
 proc sql;
 create table result_Zscores as
-    select transformed.*, (parameter_value - mean(parameter_value)) / std(parameter_value) as z_scores, case when (parameter_value - mean(parameter_value)) / std(parameter_value) NOT BETWEEN -3 AND 3 THEN "Outlier" ELSE "" END AS outlier_flag
-    from transformed
+    select transformed_1.*, (parameter_value - mean(parameter_value)) / std(parameter_value) as z_scores, case when (parameter_value - mean(parameter_value)) / std(parameter_value) NOT BETWEEN -3 AND 3 THEN "Outlier" ELSE "" END AS outlier_flag
+    from transformed_1
     group by parameter_name, &sequ, &trt, &prd
     order by parameter_name, &sequ, &trt, &prd, &id;quit;
 proc print data=result_Zscores; run;
@@ -377,18 +393,199 @@ proc print data=result_Zscores; run;
 
 **6.8** When you have outliers tell to the *PI*, and analyse your data **with** and **without** the outliers, and report your analysis with and without the outliers.
 
+____
+
 #### 7. Statistical Analysis
 
-*(To be continued)*
+**7.1** I give you 2 ways to apply analysis tests, `PROC GLM` and `PROC MIXED`, you can compare each results to improve the code since I have not worked in real study yet.
+
+**7.2** Prepare macros. [see 5.1 to calculate the logs of target parameters]
+
+```sas
+*make macro;
+%let data_set=&data_set;
+%let categ_variables= &SUBJ &sequ &PRD &TRT; * these are important, the code will not work without them;
+%let log_paramerts_variables=log_cmax log_auc_0t; * needed parameters should be converted to log;
+```
+
+**7.3** Apply `PROC GLM`. And its `POWER`.
+
+```sas
+PROC GLM DATA=&data_set;
+CLASS &categ_variables;
+ MODEL &log_paramerts_variables = &sequ &SUBJ(&sequ) &PRD &TRT/ss3; * 'ss3' option tells SAS to use Type III sums of squares in the analysis, useful for balanced or unbalanced designs;
+ RANDOM &SUBJ(&sequ) /TEST; *  &SUBJ(&sequ) is a random effect in the model, which accounts for variability between subjects in the analysis, 'TEST' option requests an F-test for the random effect;
+ TEST H = &SEQU E = &SUBj(&SEQU); * The TEST statement is used to perform a hypothesis test, It tests the null hypothesis (H) about the effects of &SEQU and the random effects (E) of &SUBJ(&SEQU);
+ LSMEANS &TRT / DIFF=CONTROL("R") CL ALPHA=0.1 ; * option specifies that differences should be calculated relative to the control level, CL requests confidence limits for the least squares means, and ALPHA=0.1 sets the confidence level at 90%;
+ ODS OUTPUT LSMeanDiffCL=LSMD;
+DATA LSMD; SET LSMD;
+ GeoMRPointEstimate = EXP(DIFFERENCE); * calculates the geometric mean of the difference for each treatment contrast by taking the exponential of the DIFFERENCE (which was logged);
+ GeoMRPointEstimate_LL = EXP(LowerCL); *  lower confidence limit for the geometric mean;
+ GeoMRPointEstimate_UL = EXP(UpperCL); *  upper confidence limit for the geometric mean;
+ cv_100_= 100*sqrt(exp(abs(Difference))-1); * This line calculates the coefficient of variation (expressed as a percentage) for the differences by taking the absolute value of the difference;
+PROC PRINT DATA=LSMD; RUN;
+
+* calc power;
+proc sql noprint; * make macros for needed colculations in the proc power, in this macros i make lists to apply them as loop;
+    select GeoMRPointEstimate into :GMRPE separated by ' ' from LSMD;
+    select cv_100_ into :cv100 separated by ' ' from LSMD;
+    select Dependent into :Dependent_var separated by ' ' from LSMD;
+    select count(distinct &subj) into :ntotal from &my_data;quit;
+
+%macro runPowerAnalysis(GMRPE, cv100, Dependent_var); * make a function that run a loop of power calculation.
+    %let count = %sysfunc(countw(&GMRPE, %str(' '))); * Count the number of elements in GMRPE *you can put cv100 instead, becouse they have same length;
+    * Loop through the elements of all lists;
+    %do i = 1 %to &count;
+        %let gmpe = %scan(&GMRPE, &i,%str(' ')); * Extract the ith element from GMRPE; 
+        %let cv = %scan(&cv100, &i,%str(' ')); * Extract the ith element from cv100;
+        %let Dependent = %scan(&Dependent_var, &i); * Extract the ith element from Dependent_var;
+
+data _null_ ; * make the macros accepted to use into proc power;
+    call symputx('GMRPE_', &gmpe);
+    call symputx('cv100_', &cv/100);
+    call symputx('n_total_', &ntotal); run;    
+
+        TITLE "Power from GLM for &Dependent";
+        proc power ; 
+             twosamplemeans test=equiv_ratio 
+             lower = 0.80
+             upper = 1.25
+             meanratio = &GMRPE_
+             cv= &cv100_
+             ntotal=&n_total_
+             power = .
+             alpha=.05; run; title;
+%end; * End of loop ;
+%mend runPowerAnalysis; * close the function (macro);
+%runPowerAnalysis(&GMRPE, &cv100, &Dependent_var); * call the function;owerAnalysis(&GMRPE, &cv100, &Dependent_var);
+```
+
+**7.4** Apply `PROC MIXED`. And its `POWER`.
+
+```sas
+%macro run_mixed(data_set, categ_variables, paramerts_variables); * make a function that run a loop of MIXED calculation;
+    %let num_vars = %sysfunc(countw(&paramerts_variables));
+    %do i = 1 %to &num_vars;
+        %let current_var = %scan(&paramerts_variables, &i);
+        PROC MIXED DATA=&data_set;
+          TITLE "--- Mixed for &current_var ---"; 
+            CLASS &categ_variables;
+            MODEL &current_var = &sequ &prd &TRT;
+            random &subj(&sequ); * This accounts for variability the subject within sequence;
+            LSMEANS &trt/PDIFF; * 'PDIFF' option requests pairwise differences between the least squares means, which can help identify differences in treatment effects;
+            ESTIMATE 'T VS R' &TRT -1 1 /CL ALPHA=0.1; * It compares the treatment represented by T="1" against the control represented by R="-1" for the levels of &TRT, that becuase the R precedes the T in sorted code, CL option requests confidence limits for this estimate, and ALPHA=0.1 specifies that the confidence level should be set at 90%;
+            ODS OUTPUT ESTIMATES=ESTIM CovParms=CovParms; RUN; * ESTIM for the estimates of the contrasts, CovParms for the covariance parameters associated with the random effects in the model;
+        DATA ESTIM; 
+            SET ESTIM;
+            GeoMRPointEstimate= EXP(Estimate);
+            GeoMRPointEstimate_LL = EXP(Lower);
+            GeoMRPointEstimate_UL = EXP(Upper); 
+            cv_100_= 100*sqrt(exp(abs(Estimate))-1);
+            RUN;
+        * calc power;
+        proc sql noprint; * make macros for needed colculations in the proc power;
+            select GeoMRPointEstimate into :GMRPE from ESTIM;
+            select cv_100_ into :cv100 from ESTIM;
+            select count(distinct &subj) into :ntotal from &my_data;quit;
+        data _null_ ; * make the macros accepted to use into proc power;
+            call symputx('GMRPE_', &GMRPE);
+            call symputx('cv100_', &cv100/100);
+            call symputx('n_total_', &ntotal); run;
+        PROC PRINT DATA=ESTIM; 
+            TITLE "Estimates for &current_var"; RUN; title;
+            TITLE "Power from MIXED for &current_var";
+        proc power ; 
+             twosamplemeans test=equiv_ratio 
+             lower = 0.80
+             upper = 1.25
+             meanratio = &GMRPE_
+             cv= &cv100_
+             ntotal=&n_total_
+             power = .
+             alpha=.05; run; title;
+        %end; * end of loop;
+%mend run_mixed; * close the function (macro);
+%run_mixed(&data_set, &categ_variables, &log_paramerts_variables); *Call the function with your parameters;
+```
+
+____
 
 #### 8. Report results
 
+**8.1** Summary of Pharmacokinetic parameters of *Paracetamol* (ng/mL) for Test Product (T) table, and another for Reference Product (R) table:
+
+```sas
+*********************** Summary Table ************************;
+proc sort data=&data_set; by &trt; run;
+
+proc means data=&data_set n mean std min median max cv noprint;
+by &trt;
+vars cmax auc_0t t_max;
+output out=Summary; run;
+proc transpose data=summary (drop=_TYPE_ _freq_) name=varname out=summary;
+by treatment;
+id _STAT_; run;
+
+ods graphics off;
+proc surveymeans data=&data_set geomean cv ;
+by &trt;
+var cmax auc_0t t_max;
+ods output statistics=cv_ geometricmeans=geomean_;
+ods select cv_ geomean_; run;
+ods graphics on;
+
+proc sort data=summary; by &trt varname; run;
+proc sort data=cv_; by &trt varname; run;
+proc sort data=geomean_; by &trt varname; run;
+data summary_2; merge summary cv_ geomean_; by &trt varname;
+
+title 'Parameters Summary by ' &trt;
+proc print data=summary_2; run; title;
+```
+
+**8.2** Make 2 comparative graphs between treatments. one for linear mean, second for mean log.
+
+```sas
+**************************** comparitive graphs ****************;
+* Comparative mean linear graph;
+proc sql; create table mean_values as select  &trt, time_point, avg(concentration_value) as concentration_value_means, avg(log(concentration_value)) as log_concentration_value_means
+from transformed 
+group by time_point, &trt; quit;
+PROC sGPLOT DATA = mean_values; 
+    series x=time_point y=concentration_value_means / group=&trt markers markerattrs=(symbol=circlefilled);
+    xaxis label='Relative Time (hrs)'; yaxis label='concentration mean';
+    title 'concentration mean vs Time (hrs)'; 
+RUN; title;
+* Comparative mean semi (log) graph;
+PROC sGPLOT DATA = mean_values; 
+    series x=time_point y=log_concentration_value_means / group=&trt markers markerattrs=(symbol=circlefilled);
+    xaxis label='Relative Time (hrs)'; yaxis label='log concentration mean';
+    title 'log concentration mean vs Time (hrs)'; 
+RUN; title;
+```
+
+**8.3** Make 2 reports, one **without** outliers, second **with** outliers, and mention them in both reports, with used tests.
+
+**8.4** Mention missing blood samples in a table: `Subject no.` , `Period`, `Time Point (hrs)`, but the `reason` will be filled by your *PI*.
+
 *(To be continued)*
+
+____
 
 #### 9. Validations
 
 *(I have no idea how to validate the results yet)*
 
+____
+
 #### 10. References
+
+- Intra-Subject Coefficient of Variation (CV%) for Sample Size Estimation for Crossover Design: https://onbiostatistics.blogspot.com/2014/03/intra-subject-coefficient-of-variation.html
+
+- Bioequivalence data analysis [tcp.2020.28.e20](https://www.tcpharm.org/pdf/10.12793/tcp.2020.28.e20)
+
+- [On Biostatistics and Clinical Trials: Cookbook SAS Codes for Bioequivalence Test in 2x2x2 Crossover Design](https://onbiostatistics.blogspot.com/2012/04/cookbook-sas-codes-for-bioequivalence.html)
+
+- 
 
 *(To be continued)*
