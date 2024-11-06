@@ -8,17 +8,17 @@ ____
 
 **Project:** Bioequivalence. 
 
-**Last Update:** 30/Oct/2024
+**Last Update:** 5/Nov/2024
 
 **Version:** 2.0
 
 **Is it an official copy?** No, This is a <u>draft copy</u>.
 
-**Edited by:** Fatimah in 30/Oct/2024.
+**Edited by:** Fatimah in 5/Nov/2024.
 
 ___
 
-**Editor notes 23/Oct/2024:**
+**Editor notes 4/Nov/2024:**
 
 1. This copy of SOP'S uses a personal account of <u>[SAS OnDemand For Academics](https://welcome.oda.sas.com/)</u>. This account is a 1 year free trail, now it is 6 months remaining. (version info: 
    
@@ -54,6 +54,8 @@ ___
 8. Each code is related to a previous procedure's code.
 
 9. I am not sure about my calculations (I did not validate them yet).
+
+10. I am wondering why i should calculate the AUC_0inf? is it prediction? i don't know 
 
 ____
 
@@ -179,7 +181,7 @@ ____
 
 #### 5. Calculations
 
-**5.1** You need some calculations like C_max, AUC, T_max, and log...etc.
+**5.1** You need some calculations like C_max, AUC, T_max, AUC_tail, AUC_0inf, and log...etc. Actually my calculation are not surely correct since i did not work on real project and did not get validation yet.
 
 ```sas
 /* calculations */
@@ -219,7 +221,7 @@ data geo_temp;
     drop label1 cvalue1 nValue1 varname;
 run;
 
-/* *calculat c_max, total AUC, t_max, and logs; */
+/* *calculat c_max, AUC_0t, t_max, auc_tail, auc_0inf and logs; */
 proc sql;
     create table cmax_auc_temp as select &subj, &sequ, &trt, &prd, 
         avg(concentration_value) as mean, std(concentration_value) as stdv, 
@@ -229,20 +231,55 @@ proc sql;
 quit;
 
 proc sql;
-    create table calcs_summary_1 as select cmax_auc_temp.*, transformed.time_point as 
+    create table calcs_summary_temp as select cmax_auc_temp.*, transformed.time_point as 
         t_max, geo_temp.geomean, geo_temp.gmstderr, geo_temp.cv, 
         geo_temp.lower_gmc_lm_90, geo_temp.upper_gmc_lm_90 from cmax_auc_temp left 
         join transformed on cmax_auc_temp.cmax=transformed.concentration_value left 
         join geo_temp on cmax_auc_temp.&subj=geo_temp.&subj and 
         cmax_auc_temp.&sequ=geo_temp.&sequ and cmax_auc_temp.&trt=geo_temp.&trt and 
         cmax_auc_temp.&prd=geo_temp.&prd
-order by &subj, &sequ, &trt, &prd;
+    order by &subj, &sequ, &trt, &prd;
 quit;
 
-title color=red "Calculations Table summary";
+******************
+AUC_(0-∞) = AUC_(0-t) + AUC_(tail)
+AUC_(tail) = Ct/ lambdaZ.
+lambdaZ= absolute(slope of log(concentration) and time) i got the slope from regression for last few time points after t_max.
+Where Ct is the final concentration that can be detected and lambdaZ is the final elimination rate constant.
+********************;
+proc sql ; * filter data by exclude time points less than t_max ;
+    create table find_slope_exclude_points as
+    select a.*,  b.t_max
+    from transformed as a
+    right join (select &subj, &sequ, &trt, &prd, t_max from calcs_summary_temp) as b
+    on a.&subj = b.&subj and a.&sequ = b.&sequ and a.&trt = b.&trt and a.&prd = b.&prd and (a.time_point > b.t_max)
+    ;quit; run;
 
-proc print data=calcs_summary_1;
-run;
+proc rank data=find_slope_exclude_points groups=8 out=find_slope_exclude_points; * include only last few points, i use PPROC RANK, because the PROC SQL does not support window_function();
+    by &subj &sequ &trt &prd;  var time_point;  ranks var1_rank; run;
+data find_slope_exclude_points;
+    set find_slope_exclude_points; where var1_rank >4;
+
+proc reg data=find_slope_exclude_points outest=find_slope noprint; * to find the slope from linear regression; 
+    by &subj &sequ &trt &prd;
+    model log_concentration_value=time_point; run;
+data find_slope; set find_slope; slope=abs(time_point); run; * get absolute slope;
+
+proc sql;
+    create table auc_tail_temp as
+/*     select  a.&subj, a.&sequ, a.&trt, a.&prd,a.concentration_value, a.lagvalue, a.time_point, a.lagtime, abs(log(a.lagvalue/a.concentration_value) / a.time_point-lagtime) as k, (a.concentration_value/abs(log(a.lagvalue/a.concentration_value) / (a.time_point-lagtime))) as auc_tail, abs(log((a.concentration_value/abs(log(a.lagvalue/a.concentration_value) / (a.time_point-lagtime))))) as log_auc_tail * this gives different value, iam not sure if it could be correct also, i just get the slope of last two points;*/
+    select  a.&subj, a.&sequ, a.&trt, a.&prd, c.slope as lambdaZ, (a.concentration_value / c.slope) as auc_tail, abs(log(a.concentration_value / c.slope)) as log_auc_tail * iam not sure if it could be correct also, i just get the slope of linear regression;
+    from auc_temp as a
+     full join find_slope as c on c.&subj = a.&subj and c.&sequ = a.&sequ and c.&trt = a.&trt and c.&prd = a.&prd
+    where a.time_point = (select max(b.time_point) * to get last concentration;
+                      from auc_temp as b where b.&subj = a.&subj and b.&sequ = a.&sequ and b.&trt = a.&trt and b.&prd = a.&prd); quit; run;
+
+proc sql; create table calcs_summary_1 as select a.*, b.auc_tail, b.log_auc_tail, (a.auc_0t+b.auc_tail) as auc_0inf, log((a.auc_0t+b.auc_tail)) as log_auc_0inf
+from calcs_summary_temp as a
+full join auc_tail_temp as b on b.&subj = a.&subj and b.&sequ = a.&sequ and b.&trt = a.&trt and b.&prd = a.&prd; quit; run;
+
+title color=red "Calculations Table summary";
+proc print data=calcs_summary_1; run;
 
 title;
 ```
@@ -263,7 +300,7 @@ ____
 %let id=&subj;
 %let categorical_variables=&sequ &trt; * select catigorical variables to encode them next step;
 %let independent_variables=e_&sequ e_&trt &prd; * 'e_' means encoded;
-%let dependent_variables=Cmax auc_0t;
+%let dependent_variables=Cmax auc_0t auc_tail auc_0inf;
 
 * encoding categorical variables, it is needed to apply models;
 %macro label_encode(dataset,var);
@@ -405,7 +442,7 @@ ____
 *make macro;
 %let data_set=&data_set;
 %let categ_variables= &SUBJ &sequ &PRD &TRT; * these are important, the code will not work without them;
-%let log_paramerts_variables=log_cmax log_auc_0t; * needed parameters should be converted to log;
+%let log_paramerts_variables=log_cmax log_auc_0t log_auc_tail log_auc_0inf; * needed parameters should be converted to log;
 ```
 
 **7.3** Apply `PROC GLM`. And its `POWER`.
@@ -520,16 +557,16 @@ proc sort data=&data_set; by &trt; run;
 
 proc means data=&data_set n mean std min median max cv noprint;
 by &trt;
-vars cmax auc_0t t_max;
+vars cmax auc_0t t_max auc_tail auc_0inf;
 output out=Summary; run;
 proc transpose data=summary (drop=_TYPE_ _freq_) name=varname out=summary;
 by treatment;
 id _STAT_; run;
 
 ods graphics off;
-proc surveymeans data=&data_set geomean cv ;
+proc surveymeans data=&data_set geomean cv alfha=.1;
 by &trt;
-var cmax auc_0t t_max;
+var cmax auc_0t t_max auc_tail auc_0inf;
 ods output statistics=cv_ geometricmeans=geomean_;
 ods select cv_ geomean_; run;
 ods graphics on;
@@ -585,6 +622,24 @@ ____
 - Bioequivalence data analysis [tcp.2020.28.e20](https://www.tcpharm.org/pdf/10.12793/tcp.2020.28.e20)
 
 - [On Biostatistics and Clinical Trials: Cookbook SAS Codes for Bioequivalence Test in 2x2x2 Crossover Design](https://onbiostatistics.blogspot.com/2012/04/cookbook-sas-codes-for-bioequivalence.html)
+
+- [AUC in Pharmacokinetics](https://pharmaeducation.net/auc-in-pharmacokinetics/)
+
+- [Volume of Distribution – Pharmacokinetics](https://sepia2.unil.ch/pharmacology/parameters/volumeofdistribution/)
+
+- [Calculating the Elimination Rate Constant | Certara](https://www.certara.com/knowledge-base/calculating-the-elimination-rate-constant/)
+
+- [First Order Elimination Rate Constant and Half-life | A closer look - Lect 11](https://www.youtube.com/watch?v=De9999Jj-5Q)
+
+- [Drug Pharmacokinetics (PK), Pharmacodynamics (PD) Study](https://www.nebiolab.com/introduction-to-pharmacokinetics-pk/)
+
+- [Streamlining Non-compartmental Pharmacokinetic Analysis](https://www.certara.com/blog/tips-tricks-for-streamlining-non-compartmental-pharmacokinetic-analysis/)
+
+- [Check lambda_z - PKANALIX](https://pkanalix.lixoft.com/check-lambda_z/)
+
+- [Data processing and calculation rules - PKANALIX](https://pkanalix.lixoft.com/calculation-rules/)
+
+- 
 
 - 
 
