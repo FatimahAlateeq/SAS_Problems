@@ -8,13 +8,13 @@ ____
 
 **Project:** Bioequivalence. 
 
-**Last Update:** 21/Nov/2024
+**Last Update:** 4/Dec/2024
 
-**Version:** 4.0
+**Version:** 5.0
 
 **Is it an official copy?** No, This is a <u>draft copy</u>.
 
-**Edited by:** Fatimah in 21/Nov/2024.
+**Edited by:** Fatimah in 4/Dec/2024.
 
 ___
 
@@ -53,7 +53,7 @@ ___
 
 8. Each code is related to a previous procedure's code.
 
-9. I am not sure about my calculations (I did not validate them yet).
+9. **I am not sure about my calculations (I did not validate them yet).**
 
 10. I am wondering why i should calculate the AUC_0inf? is it prediction? i don't know 
 
@@ -154,12 +154,14 @@ ____
 ```sas
 /* make macro for each neaded variable */
 %let my_data=my_data;
-%let subj=subject_number;
-%let count_subjects=12;
+%let subj=subject;
+%let count_subjects=15;
+%let count_subjects_per_group=&count_subjects;
 %let sequ=sequence;
 %let trt=treatment;
 %let prd=period;
-%let parameters='0'n '0.08'n '0.25'n '0.5'n '0.75'n '1'n '1.33'n '1.67'n '2'n '2.33'n '2.67'n '3'n '3.33'n '3.67'n '4'n '4.5'n '5'n '6'n '8'n '10'n '12'n '16'n '24'n '36'n '48'n;
+%let count_prd=3;
+%let parameters= '0.00'n '0.25'n '0.50'n '0.75'n '1.00'n '1.50'n '2.00'n '2.50'n '3.00'n '3.50'n '4.00'n '4.50'n '5.00'n '6.00'n '8.00'n '12.00'n '16.00'n '23.00'n '36.00'n '48.00'n '72.00'n;
 * these are the time points from the data;
 
 transform time-points into one columns;
@@ -236,14 +238,16 @@ ____
 
 **5.0** You need some calculations like C_max, AUC, T_max, AUC_tail, AUC_0inf, and log...etc. Actually my calculation are not surely correct since i did not work on real project and did not get validation yet.
 
-**5.1 Slope** You need to find the slope to use it in your calculations of interpolation, and AUC_tail. Use semi logarithmic slope of the points after Cmax (this slope called Lambda_z): (t_2-t_1)/log(c_2-c_1). The linear slope will give bad results. Also it is important to get negative slope (positive slope means failed model in this study), I use Adjusted R-square in the regression model (check the regression result to see all slopes  in negative, the `_EDF_` shows the numbers of points included to get best fit). Remember to exclude zeros and negative values before the regression (only for the regression step, then give them back), these values will effect the slope badly.
+**5.1 Slope** You need to find the slope to use it in your calculations of interpolation (if needed), and AUC_tail. Use semi logarithmic slope of the points after Cmax (this slope called Lambda_z): (t_2-t_1)/log(c_2-c_1). The linear slope will give bad results. Also it is important to get negative slope (positive slope means failed model in this study), I use Adjusted R-square in the regression model (check the regression result to see all slopes  in negative, the `_EDF_` shows count of points included to get best fit). Remember to exclude zeros and negative values before the regression (only for the regression step, then give them back), these values will effect the slope badly.
+
+**5.1.1** If `Cmax` has more than one time point, get the minimum one.
 
 ```sas
 ********************************** find slope;
 ********lambdaZ= (slope of (concentration) and time) i got the slope from regression for last few time points after t_max depending on the Adjusted R-square;
 * it is needed for interpolation and for the AUC_tail, AUC_inf;
 * create function that let you choose the intervel (all given points, or points lies after cmax point) and type fo slope (linear which is bad one since it gives bad results, logarithem which is the good one);
-%macro choose_slope(interval, type); 
+%macro choose_slope(interval, type);
     %if &interval = after %then %do;
         %let choice=and (a.time_point > b.t_max); %end;
     %else %if &interval = all %then %do;
@@ -256,61 +260,85 @@ ____
         %let dependent=concentration_value; %end;
     %else %do;
         %put Invalid input. Please enter either 'log' or 'linear.'; %end;
-        proc sql ; * filter data by exclude time points less than t_max, if you choose 'after';
+
+        proc sql ; * filter data by exclude time points less than first t_max (a subject may have more than one cmax in different time, so exclude the first one);
             create table find_slope_exclude_points as
             select a.*,  b.t_max
             from transformed as a
-            right join (select  &subj, &sequ, &trt, &prd, max(concentration_value) as cmax, case when concentration_value=max(concentration_value) then time_point end as t_max 
-                            from transformed group by &subj, &sequ, &trt, &prd
-                            having t_max is not null) as b
+            right join ( select distinct &subj, &sequ, &trt, &prd, min(t_max) as t_max 
+                            from (select  &subj, &sequ, &trt, &prd, concentration_value,time_point as t_max 
+                                    from transformed group by &subj, &sequ, &trt, &prd
+                                    having  concentration_value=max(concentration_value)) as c
+                            group by &subj, &sequ, &trt, &prd having t_max is not null) as b
             on a.&subj = b.&subj and a.&sequ = b.&sequ and a.&trt = b.&trt and a.&prd = b.&prd 
-             &choice ;quit; run;
+             &choice 
+             where concentration_value>0;quit; run;
 
-        proc rank data=find_slope_exclude_points descending out=find_slope_exclude_points; * i use PPROC RANK, because the PROC SQL does not support window_function();
-            by &subj &sequ &trt &prd; var time_point; where (&> 0); ranks var1_rank; run; * zeros and negatives will effect the slop badly, so should be excluded;
+        proc rank data=find_slope_exclude_points descending out=find_slope_exclude_points; * to include only last few points, i use PPROC RANK, because the PROC SQL does not support window_function();
+            var time_point; by &subj &sequ &trt &prd; 
+            where (concentration_value > 0); 
+            ranks var1_rank; run;
 
-        proc reg data=find_slope_exclude_points outest=find_slope noprint; * to find the slope from linear regression; 
+        proc reg data=find_slope_exclude_points outest=find_slope noprint;  
             by &subj &sequ &trt &prd;
+/*             where var1_rank<4; */
             model &dependent=time_point/selection=ADJRSQ; run;
-        data find_slope; set find_slope; slope=(time_point);  run; * if you got positive slope, the model failed;
+        data find_slope; set find_slope; slope=(time_point);  run; 
 %mend choose_slope;
 
-%choose_slope(interval=after,type=log); * call function. 'linear' gives bad result of slope, don't choose it!, i will keep it to let you compare and see by your self;
+%choose_slope(interval=after,type=log); * call the function;
 ```
 
-**5.1.1** Fill missed points before PK calculations.
+**5.1.1** Fill missed points before PK calculations. **It is depends on your *PI*.**
 
 ```sas
 ********interpolation to fill missing middle points;
-data interpolation;
-set transformed;
-        LagTime=LAG(time_point);
-        LagValue=LAG(concentration_value);
-        IF time_point=0 THEN DO;
-            LagTime=0;
-            LagValue=0;
-        END;
-        if concentration_value=. then do;
-        concentration_value=(lagvalue+(abs((time_point-lagtime)/(lead_time-lagtime))*(lead_value-lagvalue)));
-        end;
-    by &subj &sequ &trt &prd; run;
+%macro interpolation(apply);
+        %if &apply=yes %then %do;
+        data interpolation;
+        set transformed;
+                LagTime=LAG(time_point);
+                LagValue=LAG(concentration_value);
+                IF time_point=0 THEN DO;
+                    LagTime=0;
+                    LagValue=0;
+                END;
+                if concentration_value=. then do;
+                concentration_value=(lagvalue+(abs((time_point-lagtime)/(lead_time-lagtime))*(lead_value-lagvalue)));
+                end;
+            by &subj &sequ &trt &prd; run;
 
-********interpolation to fill missing last points;
-proc sql; create table interpolation as 
-select b.*, a.intercept, a.slope,
-case when ((b.concentration_value=.) and (b.lead_value=.)) then abs(a.intercept-a.slope*b.time_point) else b.concentration_value end as concentration_value_2
-from find_slope as a
-full join interpolation as b 
-on a.&subj = b.&subj and a.&sequ = b.&sequ and a.&trt = b.&trt and a.&prd = b.&prd
-group by b.&subj, b.&sequ, b.&trt, b.&prd
-order by  b.&subj, b.&sequ, b.&trt, b.&prd, b.time_point; 
-quit; run;
+        ********interpolation to fill missing last points;
+        proc sql; create table interpolation as 
+        select b.*, a.intercept, a.slope,
+        case when ((b.concentration_value=.) and (b.lead_value=.)) then abs(a.intercept-a.slope*b.time_point) else b.concentration_value end as concentration_value_2
+        from find_slope as a
+        full join interpolation as b 
+        on a.&subj = b.&subj and a.&sequ = b.&sequ and a.&trt = b.&trt and a.&prd = b.&prd
+        group by b.&subj, b.&sequ, b.&trt, b.&prd
+        order by  b.&subj, b.&sequ, b.&trt, b.&prd, b.time_point; 
+        quit; run;
 
-data interpolation;
-set interpolation;
-drop concentration_value;
-rename concentration_value_2=concentration_value;
-log_concentration_value=log(concentration_value); run;
+        data interpolation;
+        set interpolation;
+        drop concentration_value;
+        rename concentration_value_2=concentration_value;
+        log_concentration_value=log(concentration_value); run;
+        %end;
+    %else %if &apply=no %then %do;
+        data interpolation;
+        set transformed;
+                LagTime=LAG(time_point);
+                LagValue=LAG(concentration_value);
+                IF time_point=0 THEN DO;
+                    LagTime=0;
+                    LagValue=0;
+                END;
+            by &subj &sequ &trt &prd; run; %end;
+    %else %do;
+        %put Invalid input. Please enter either 'yes' or 'no.'; %end;
+%mend interpolation;
+%interpolation(no); *call function, no=no filling, yes=fill missings;
 ```
 
 **5.2** Do *PK* calculations.
@@ -318,48 +346,54 @@ log_concentration_value=log(concentration_value); run;
 ```sas
 ***************************** calculations *************************;
 ********************* camx, tmax, AUC_0t, AUC_tail, AUC_inf;
-* calculate AUC using Trapezoid technique;
-DATA auc_temp;
-    SET interpolation;
-    by &subj &sequ &trt &prd;
-    Trapezoid=(time_point-LagTime)*(concentration_value+LagValue)/2;
-/*     Trapezoid=(time_point-LagTime)*(concentration_value-LagValue)/log(concentration_value-LagValue); * i dont know if this what they meant by logarithmic AUC; */
-RUN;
+* calculate AUC using Trapezoid technique, to last nonzero concentration;
+proc sql; create table auc_temp as select a.*, case when a.time_point<=b.tmax_nozero then (a.time_point-a.LagTime)*(a.concentration_value+a.LagValue)/2 end as Trapezoid
+from interpolation as a left join (select &subj, &sequ, &trt, &prd, max(time_point) as tmax_nozero from interpolation where concentration_value>0 group by &subj, &sequ, &trt, &prd) as b
+on a.&subj = b.&subj and a.&sequ = b.&sequ and a.&trt = b.&trt and a.&prd = b.&prd
+group by a.&subj, a.&sequ, a.&trt, a.&prd; quit; run;
 
-*calculat c_max, AUC_0t, t_max, auc_tail, auc_0inf and logs; 
+/* *calculat c_max, AUC_0t, t_max, auc_tail, auc_0inf and logs; */
 proc sql;
-    create table cmax_auc_tmax_temp as select &subj, &sequ, &trt, &prd, 
-        max(concentration_value) as cmax, log(max(concentration_value)) as log_Cmax,
-        sum(Trapezoid) as auc_0t, log(sum(Trapezoid)) as log_auc_0t,
-        case when concentration_value=max(concentration_value) then time_point end as t_max 
-        from auc_temp 
-        group by &subj, &sequ, &trt, &prd
-        having time_point is not null;
-quit;
+    create table cmax_auc_tmax_temp as select a.&subj, a.&sequ, a.&trt, a.&prd, 
+        max(a.concentration_value) as cmax, log(max(a.concentration_value)) as log_Cmax,
+        sum(a.Trapezoid) as auc_0t, log(sum(a.Trapezoid)) as log_auc_0t,
+        case when a.concentration_value=max(a.concentration_value) then b.tmax end as t_max 
+        from auc_temp as a
+        left join (select distinct &subj, &sequ, &trt, &prd, min(t_max) as tmax 
+                            from (select  &subj, &sequ, &trt, &prd, concentration_value,time_point as t_max 
+                                    from transformed group by &subj, &sequ, &trt, &prd
+                                    having  concentration_value=max(concentration_value)) as c
+                            group by &subj, &sequ, &trt, &prd having t_max is not null) as b
+        on a.&subj = b.&subj and a.&sequ = b.&sequ and a.&trt = b.&trt and a.&prd = b.&prd
+        group by a.&subj, a.&sequ, a.&trt, a.&prd
+        having t_max is not null; quit; run;
 ******************
 AUC_(0-∞) = AUC_(0_t) + AUC_(tail)
 AUC_(tail) = Ct/ lambdaZ.
 lambdaZ= (slope of (concentration) and time) i got the slope from regression for last few time points after t_max.
 Where Ct is the final concentration that can be detected and lambdaZ is the final elimination rate constant.
 ********************;
-%choose_slope(interval=after, type=log); * call function;
+
 proc sql;
-    *Step 1: Find the last concentration value and its corresponding by finding the max time_point;
     create table auc_tail_temp as
-    select  a.&subj, a.&sequ, a.&trt, a.&prd, a.time_point, a.concentration_value , abs(c.slope) as lambdaZ, abs(a.concentration_value / c.slope) as auc_tail, abs(log(abs(a.concentration_value / c.slope))) as log_auc_tail 
+    select  a.&subj, a.&sequ, a.&trt, a.&prd, a.time_point, a.concentration_value , c.slope as lambdaZ, abs(a.concentration_value / c.slope) as auc_tail, abs(log(abs(a.concentration_value / c.slope))) as log_auc_tail 
 /*     * iam not sure if it could be correct also, i just get the slope of linear regression; */
     from auc_temp as a
+    left join (select &subj, &sequ, &trt, &prd, max(time_point) as tmax_nozero from interpolation where concentration_value>0 group by &subj, &sequ, &trt, &prd) as b
+        on a.&subj = b.&subj and a.&sequ = b.&sequ and a.&trt = b.&trt and a.&prd = b.&prd
      left join find_slope as c on c.&subj = a.&subj and c.&sequ = a.&sequ and  c.&trt = a.&trt and c.&prd = a.&prd
-    having a.time_point=max(a.time_point); quit; run;
+     group by a.&subj, a.&sequ, a.&trt, a.&prd
+    having a.time_point=b.tmax_nozero; quit; run;
 
 proc sql; create table calcs_summary_1 as select distinct a.*, b.auc_tail, b.log_auc_tail, a.auc_0t+b.auc_tail as auc_0inf, abs(log(a.auc_0t+b.auc_tail)) as log_auc_0inf
 from cmax_auc_tmax_temp as a
 full join auc_tail_temp as b on b.&subj = a.&subj and b.&sequ = a.&sequ and b.&trt = a.&trt and b.&prd = a.&prd
 having t_max is not null; quit; run;
 
+
 title color=red "Calculations Table summary";
-proc print data=calcs_summary_1;
-run;
+proc print data=calcs_summary_1; run;
+
 title;
 ```
 
@@ -434,14 +468,19 @@ run;
 title color=bip "Outliers detection using (cooksd, rstudentbyleverage)";
 ods graphics on;
 *** i used defult cutoffs: rstudent cutoff=+-2 and cutoff Cook's is 4/(n-p) ***;
-
-proc reg data=&data_set plots(only label)=(cooksd rstudentbyleverage);
+proc sort data=&data_set; by &independent_variables; run;
+proc reg data=&data_set plots(only label)=(cooksd rstudentbyleverage) ;
     ODS SELECT CooksDPlot RStudentByLeverage;
-    by &independent_variables;
-    id &id;
+    by &independent_variables; id &id;
     model &dependent_variables=&independent_variables;
-run;
-title;
+    ods output CooksDPlot=cookdtable RStudentByLeverage=RStudentable; 
+    ods graphics off;
+    quit; run; title;
+    ods graphics on;
+data CookdTable1; set CookdTable; cooksdlabel=trim(cooksdlabel); where cooksdlabel ne ""; drop model observation cooksdlabel; rename id1=&subj; run;
+proc sort data=CookdTable1; by dependent; run; proc print data=CookdTable1; run;
+data RStudentable1; set RStudentable; where outlevlabel ne ""; drop model observation outLevLabel hatdiagonal rsbylevindex rsbygroup _rsbylevindex_1_ _rsbylevindex__1_; rename id1=&subj; run;
+proc sort data=RStudentable1; by dependent; run; proc print data=RStudentable1; run;
 ```
 
 **6.5** Also, use another test called `IQR` to detect outliers. (i'll mention it later)
@@ -481,7 +520,7 @@ data bounds_temp;
     Lower_Bound_iqr = Q25 - 1.5 * IQR; /* Lower bound */
     Upper_Bound_iqr = Q75 + 1.5 * IQR; /* Upper bound */
 run;
-data iqr_results; * a merge step, here is the ooutliers detection;
+data iqr_results (drop=log_Cmax log_auc_0t t_max auc_tail log_auc_tail log_auc_0inf); * a merge step, here is the ooutliers detection;
     merge bounds_temp transformed_1; /* Get bounds */
     by parameter_name &independent_variables;
     if parameter_value < Lower_Bound_iqr or parameter_value > Upper_Bound_iqr then outlier = 'outlier';
@@ -502,6 +541,8 @@ create table result_Zscores as
     from transformed_1
     group by parameter_name, &sequ, &trt, &prd
     order by parameter_name, &sequ, &trt, &prd, &id;quit;
+data  result_Zscores (drop=log_Cmax log_auc_0t t_max auc_tail log_auc_tail log_auc_0inf);
+set  result_Zscores ; run;
 proc print data=result_Zscores; run;
 ```
 
@@ -525,68 +566,82 @@ ____
 ods graphics off; * no need for test's graphs;
 ```
 
+**2.7.1** Prepare Power function.
+
+```sas
+%macro runPowerAnalysis(geo_iscv_data); * make a function that run a loop of power calculation;
+            * calc power;
+            proc sql noprint; * make macros for needed colculations in the proc power, in this macros i make lists to apply them as loop;
+                select round(GeoMRPointEstimate_ratio,.01) into :GMRPE separated by " " from &geo_iscv_data;
+                select round(iscv,.01) into :iscv_ separated by " " from &geo_iscv_data; quit; run;
+            proc power ; 
+            ods select none;
+                 twosamplemeans test=equiv_ratio 
+                 lower = 0.80
+                 upper = 1.25
+                 meanratio = &GMRPE
+                 cv= &iscv_
+                 NPERG=&count_subjects_per_group
+                 power = .
+                 alpha=.05;
+                ; ods output output=power; run; title;
+                ods select all;
+        proc sql noprint; create table power_&geo_iscv_data as select distinct a.*, b.NperGroup, (b.power*100) as power_100
+        from &geo_iscv_data as a
+        left join power as b on (round(a.GeoMRPointEstimate_ratio,.01)=round(b.meanratio,.01)) and (round(a.iscv,.01)=round(b.cv,.01))
+        ; quit; run;
+        PROC PRINT DATA=power_&geo_iscv_data; RUN;
+
+%mend runPowerAnalysis; * close the function (macro);
+```
+
 **7.3** Apply `PROC GLM`. And its `POWER`.
 
 ```sas
-PROC GLM DATA=&data_set;
-CLASS &categ_variables;
- MODEL &log_paramerts_variables = &sequ &SUBJ(&sequ) &PRD &TRT/ss3; * 'ss3' option tells SAS to use Type III sums of squares in the analysis, useful for balanced or unbalanced designs;
- RANDOM &SUBJ(&sequ) /TEST; *  &SUBJ(&sequ) is a random effect in the model, which accounts for variability between subjects in the analysis, 'TEST' option requests an F-test for the random effect;
- TEST H = &SEQU E = &SUBj(&SEQU); * The TEST statement is used to perform a hypothesis test, It tests the null hypothesis (H) about the effects of &SEQU and the random effects (E) of &SUBJ(&SEQU);
- LSMEANS &TRT / DIFF=CONTROL("R") CL stderr ALPHA=0.1 ; * option specifies that differences should be calculated relative to the control level, CL requests confidence limits for the least squares means, and ALPHA=0.1 sets the confidence level at 90%;
- ODS OUTPUT LSMeanDiffCL=LSMD OverallANOVA=MSE;
+%macro run_glm(data_set, categ_variables, paramerts_variables); * make a function that run a loop of MIXED calculation;
+    %let num_vars = %sysfunc(countw(&paramerts_variables));
+    %do i = 1 %to &num_vars;
+        %let current_var = %scan(&paramerts_variables, &i);
+    PROC GLM DATA=&data_set;
+    TITLE "-*-*- GLM for &current_var -*-*-"; 
+    CLASS &categ_variables;
+    MODEL &current_var= &sequ &SUBJ(&sequ) &PRD &TRT/ss3; * 'ss3' option tells SAS to use Type III sums of squares in the analysis, useful for balanced or unbalanced designs;
+    RANDOM &SUBJ(&sequ) /TEST; *  &SUBJ(&sequ) is a random effect in the model, which accounts for variability between subjects in the analysis, 'TEST' option requests an F-test for the random effect;
+    TEST H = &SEQU E = &SUBj(&SEQU); * The TEST statement is used to perform a hypothesis test, It tests the null hypothesis (H) about the effects of &SEQU and the random effects (E) of &SUBJ(&SEQU);
+    LSMEANS &TRT / DIFF=CONTROL("R") CL stderr ALPHA=0.1 ; * option specifies that differences should be calculated relative to the control level, CL requests confidence limits for the least squares means, and ALPHA=0.1 sets the confidence level at 90%;
+    ODS OUTPUT LSMeanDiffCL=LSMD OverallANOVA=MSE;
 
-data MSE (keep=ms source dependent);
-set MSE; where source = 'Error'; run;
-proc sql; create table LSMD_MSE as select a.*, b.* from LSMD as a left join MSE as b on a.dependent=b.dependent; quit; run;
-DATA LSMD (drop=source);set LSMD_MSE;
- GeoMRPointEstimate_ratio = EXP(DIFFERENCE); * calculates the geometric mean of the difference for each treatment contrast by taking the exponential of the DIFFERENCE (which was logged);
- GeoMRPointEstimate_LL = EXP(LowerCL); *  lower confidence limit for the geometric mean;
- GeoMRPointEstimate_UL = EXP(UpperCL); *  upper confidence limit for the geometric mean;
- iscv= sqrt(EXP(MS)-1); * This line calculates the coefficient of variation (expressed as a percentage) for the mean square error;
+    data MSE (keep=ms source dependent); set MSE; where source = 'Error'; run;
+    proc sql; create table LSMD_MSE as select a.*, b.* from LSMD as a left join MSE as b on a.dependent=b.dependent; quit; run;
+    DATA LSMD (drop=source);set LSMD_MSE;
+         GeoMRPointEstimate_ratio = EXP(DIFFERENCE); * calculates the geometric mean of the difference for each treatment contrast by taking the exponential of the DIFFERENCE (which was logged);
+         GeoMRPointEstimate_LL = EXP(LowerCL); *  lower confidence limit for the geometric mean;
+         GeoMRPointEstimate_UL = EXP(UpperCL); *  upper confidence limit for the geometric mean;
+         iscv= sqrt(EXP(MS)-1); run; * This line calculates the coefficient of variation (expressed as a percentage) for the mean square ;
 
-* calculate the power and print results;
-%macro runPowerAnalysis(geo_iscv_data); * make a function that run a loop of power calculation;
-        * calc power;
-        proc sql noprint; * make macros for needed colculations in the proc power, in this macros i make lists to apply them as loop;
-            select GeoMRPointEstimate_ratio into :GMRPE separated by ' ' from &geo_iscv_data;
-            select iscv into :iscv_ separated by ' ' from &geo_iscv_data;
-            select count(distinct &subj) into :ntotal from &my_data;quit; run;
-        proc power ; 
-        ods select none;
-             twosamplemeans test=equiv_ratio 
-             lower = 0.80
-             upper = 1.25
-             meanratio = &GMRPE
-             cv= &iscv_
-             NPERG=&ntotal
-             power = .
-             alpha=.05;
-            ; ods output output=power; run; title;
-            ods select all;
-    proc sql noprint; create table power_&geo_iscv_data as select distinct a.*, b.NperGroup, (b.power*100) as power_100
-    from &geo_iscv_data as a
-    left join power as b on (round(a.GeoMRPointEstimate_ratio,.001)=round(b.meanratio,.001)) and (round(a.iscv,.001)=round(b.cv,.001)); quit; run;
-    PROC PRINT DATA=power_&geo_iscv_data; RUN;
-
-%mend runPowerAnalysis; * close the function (macro);
-%runPowerAnalysis(LSMD); * call the function;
+    %runPowerAnalysis(LSMD); * call the function;
+    %end;
+%mend run_glm;
+ods graphics off;
+%run_glm(&data_set, &categ_variables, &log_paramerts_variables);
+ods graphics on;
 ```
 
 **7.4** Apply `PROC MIXED`. And its `POWER`.
 
 ```sas
-%macro run_mixed(data_set, categ_variables, paramerts_variables); * make a function that run a loop of MIXED calculations;
+%macro run_mixed(data_set, categ_variables, paramerts_variables); * make a function that run a loop of MIXED calculation;
     %let num_vars = %sysfunc(countw(&paramerts_variables));
     %do i = 1 %to &num_vars;
         %let current_var = %scan(&paramerts_variables, &i);
         PROC MIXED DATA=&data_set;
-          TITLE "--- Mixed for &current_var ---"; 
+          TITLE "-_-_- Mixed for &current_var -_-_-"; 
             CLASS &categ_variables;
             MODEL &current_var = &sequ &prd &TRT;
             random &subj(&sequ); * This accounts for variability the subject within sequence;
             LSMEANS &trt/PDIFF; * 'PDIFF' option requests pairwise differences between the least squares means, which can help identify differences in treatment effects;
             ESTIMATE 'R VS T1' &TRT -1 1 0 /CL ALPHA=0.1; * It compares the treatment represented by T="1" against the control represented by R="-1" for the levels of &TRT, that becuase the R precedes the T in sorted code, CL option requests confidence limits for this estimate, and ALPHA=0.1 specifies that the confidence level should be set at 90%;
+            ESTIMATE 'R VS T2' &TRT -1 0 1 /CL ALPHA=0.1;
             ODS OUTPUT ESTIMATES=ESTIM CovParms=CovParms; RUN; * ESTIM for the estimates of the contrasts, CovParms for the covariance parameters associated with the random effects in the model;
 
         proc sql noprint; * Residual Estimate is the within-subject (or intra-subject) variability;
@@ -601,10 +656,10 @@ DATA LSMD (drop=source);set LSMD_MSE;
             GeoMRPointEstimate_UL = EXP(Upper); 
             iscv= sqrt(EXP(&Residual)-1); RUN;
 
-         TITLE "Estimates for &current_var";  
-            %runPowerAnalysis(ESTIM); title; * recal created power function;
+            TITLE "Estimates for &current_var";  
+            %runPowerAnalysis(ESTIM); title;  * recal created power function;
 
-     %end; * end of loop;
+        %end; * end of loop;
 %mend run_mixed; * close the function (macro);
 %run_mixed(&data_set, &categ_variables, &log_paramerts_variables); *Call the function with your parameters;
 ```
@@ -618,18 +673,19 @@ ____
 ```sas
 *********************** Summary Table ************************;
 proc sort data=&data_set; by &trt; run;
-proc means data=&data_set n mean std min median max noprint;
+
+proc means data=&data_set n mean std min median max cv noprint;
 by &trt;
-vars cmax auc_0t t_max auc_0inf;
+vars cmax auc_0t auc_0inf;
 output out=Summary; run; 
 proc transpose data=summary (drop=_TYPE_ _freq_) name=varname out=summary;
-by treatment;
+by &trt;
 id _STAT_; run;
 
 ods graphics off;
-proc surveymeans data=&data_set geomean UGMCLM LGMCLM alpha=.1;
+proc surveymeans data=&data_set geomean UGMCLM LGMCLM cv alpha=.1;
 by &trt;
-var cmax auc_0t t_max auc_0inf;
+var cmax auc_0t auc_0inf;
 ods output statistics=statistics_ geometricmeans=geomean_;
 ods select statistics_ geomean_; run;
 ods graphics on;
@@ -646,19 +702,23 @@ proc print data=summary_2; run; title;
 
 ```sas
 **************************** comparitive graphs ****************;
-ods graphics on; * remember to turn on the graphs if it have been turned off;
+ods graphics on;
 * Comparative mean linear graph;
 proc sql; create table mean_values as select  &trt, time_point, avg(concentration_value) as concentration_value_means, avg(log(concentration_value)) as log_concentration_value_means
 from transformed 
 group by time_point, &trt; quit;
 PROC sGPLOT DATA = mean_values; 
-    series x=time_point y=concentration_value_means / group=&trt datalabel=concentration_value_means markers markerattrs=(symbol=circlefilled);
+    series x=time_point y=concentration_value_means / group=&trt 
+/*     datalabel=concentration_value_means  */
+    markers markerattrs=(symbol=circlefilled);
     xaxis label='Relative Time (hrs)'; yaxis label='concentration (ng/mL) mean';
     title 'concentration mean vs Time (hrs)'; 
 RUN; title;
-* Comparative mean semi(log) graph;
+* Comparative mean semi (log) graph;
 PROC sGPLOT DATA = mean_values; 
-    series x=time_point y=log_concentration_value_means / group=&trt datalabel=log_concentration_value_means markers markerattrs=(symbol=circlefilled) ;
+    series x=time_point y=log_concentration_value_means / group=&trt 
+/*     datalabel=log_concentration_value_means  */
+    markers markerattrs=(symbol=circlefilled) ;
     xaxis label='Relative Time (hrs)'; yaxis label='log concentration (ng/mL) mean';
     title 'log concentration mean vs Time (hrs)'; 
 RUN; title;
@@ -744,6 +804,10 @@ ____
 - [351-2011: CONTRAST and ESTIMATE Statements Made Easy: The LSMESTIMATE Statement](https://support.sas.com/resources/papers/proceedings11/351-2011.pdf)
 
 - [Calculation rules](https://monolixsuite.slp-software.com/pkanalix/2024R1/calculation-rules#Calculationrules-Differenceandratio)
+
+- [Mathematical Concepts and the Trapezoidal Method](https://onlinelibrary.wiley.com/doi/pdf/10.1002/9781119261087.app1?msockid=0ef9e0ed2d75692f034df5d72c41687b)
+
+- [Area under the plasma concentration time curve (AUC)](https://www.boomer.org/c/p4/c02/c0208.php)
 
 - 
 
